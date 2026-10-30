@@ -13,7 +13,8 @@
     #pano { position: absolute; inset: 0; background: #222; }
     /* 칠하기 중에만 입력을 받는 판. 평소에는 로드뷰가 마우스를 받습니다. */
     #catch { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
-    body.drawing #catch { pointer-events: auto; cursor: crosshair; touch-action: none; }
+    body.drawing:not(.moving) #catch { pointer-events: auto; cursor: crosshair; touch-action: none; }
+    body.erasing:not(.moving) #catch { cursor: cell; }
     #ink { position: absolute; left: 0; top: 0; z-index: 5; pointer-events: none; }
 
     /* 미니맵 */
@@ -39,6 +40,7 @@
     .ink-label span { display: inline-block; transform: skewX(12deg); }
     .ink-track { flex: 1; max-width: 420px; height: 22px; background: #fff; border: 3px solid var(--ink); transform: skewX(-12deg); overflow: hidden; }
     #inkFill { height: 100%; width: 100%; background: var(--orange); transition: background 0.2s; }
+    #inkFill.eraser { background: repeating-linear-gradient(45deg, #111 0 6px, #fff 6px 12px); }
     .buttons { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
     .btn { font: inherit; font-weight: 900; font-size: 16px; color: var(--ink); background: #fff; border: 3px solid var(--ink); padding: 10px 18px; cursor: pointer; transform: skewX(-12deg); box-shadow: 4px 4px 0 var(--ink); transition: transform 0.08s, box-shadow 0.08s, background 0.08s; }
     .btn span { display: inline-block; transform: skewX(12deg); }
@@ -94,8 +96,10 @@
         <button class="team on" data-team="orange" style="background:#ff6b1a" aria-label="오렌지 팀"></button>
         <button class="team" data-team="green" style="background:#2ff28a" aria-label="그린 팀"></button>
         <button class="btn" id="btnDraw" type="button"><span>칠하기</span></button>
-        <button class="btn" id="btnClear" type="button"><span>지우기</span></button>
-        <span class="hint">칠하기 꺼짐: 화살표로 이동 · 켜짐: 드래그로 칠하기</span>
+        <button class="btn" id="btnErase" type="button"><span>지우기</span></button>
+        <button class="btn" id="btnMove" type="button"><span>이동</span></button>
+        <button class="btn" id="btnClear" type="button"><span>전체삭제</span></button>
+        <span class="hint">칠하기·지우기 중에도 이동 버튼이나 Shift를 누르면 자리를 옮길 수 있어요</span>
       </div>
     </footer>
   </div>
@@ -133,6 +137,9 @@
     const state = {
       team: 'orange',
       drawMode: false,
+      eraseMode: false,
+      moveOn: false,
+      shiftHeld: false,
       drawing: false,
       panoId: null,
       stroke: null,
@@ -158,6 +165,8 @@
       inkFill: document.getElementById('inkFill'),
       toast: document.getElementById('toast'),
       btnDraw: document.getElementById('btnDraw'),
+      btnErase: document.getElementById('btnErase'),
+      btnMove: document.getElementById('btnMove'),
       btnClear: document.getElementById('btnClear'),
       teamButtons: document.querySelectorAll('.team'),
     };
@@ -254,6 +263,11 @@
         return;
       }
       state.drawing = true;
+      if (state.eraseMode) {
+        eraseAt(eventPoint(e));
+        e.preventDefault();
+        return;
+      }
       state.stroke = { t: state.team, pts: [] };
       (state.walls[state.panoId] ||= []).push(state.stroke);
       state.lastPt = null;
@@ -270,9 +284,50 @@
       }
     }
 
+    // 지우개: 화면에서 가까운 칠 점을 지웁니다.
+    function eraseAt(p) {
+      const strokes = state.walls[state.panoId];
+      if (!strokes || !strokes.length) return;
+      const w = els.catch.clientWidth;
+      const h = els.catch.clientHeight;
+      const pov = pano.getPov();
+      const degPerPx = fovOf(pano.getZoom()) / w;
+      const reach = CONFIG.brushPx + 4;
+      let removed = false;
+      for (const s of strokes) {
+        s.pts = s.pts.filter(([hd, pt]) => {
+          const x = w / 2 + wrapDeg(hd - pov.heading) / degPerPx;
+          const y = h / 2 - (pt - pov.pitch) / degPerPx;
+          const near = Math.hypot(x - p.x, y - p.y) < reach;
+          if (near) removed = true;
+          return !near;
+        });
+      }
+      if (!removed) return;
+      state.walls[state.panoId] = strokes.filter((s) => s.pts.length > 0);
+      if (!state.walls[state.panoId].length) {
+        delete state.walls[state.panoId];
+        unclaimPano();
+      }
+      markDirty();
+    }
+
+    // 칠한 것을 모두 지우면 그 사진 위치의 점령도 풀립니다.
+    function unclaimPano() {
+      const id = state.panoId;
+      if (!state.owners[id]) return;
+      delete state.owners[id];
+      if (state.ownerMarkers[id]) {
+        state.ownerMarkers[id].setMap(null);
+        delete state.ownerMarkers[id];
+      }
+    }
+
     els.catch.addEventListener('pointerdown', startDraw);
     window.addEventListener('pointermove', (e) => {
-      if (state.drawing) addPoint(eventPoint(e));
+      if (!state.drawing) return;
+      if (state.eraseMode) eraseAt(eventPoint(e));
+      else addPoint(eventPoint(e));
     });
     window.addEventListener('pointerup', stopDraw);
     window.addEventListener('pointercancel', stopDraw);
@@ -452,22 +507,63 @@
     }
 
     // ===== 버튼 =====
+    // 칠하기 / 지우기 / 이동 상태를 화면에 맞춥니다.
+    function refreshModes() {
+      const painting = state.drawMode || state.eraseMode;
+      const moving = state.moveOn || state.shiftHeld;
+      if (moving && state.drawing) stopDraw();
+      document.body.classList.toggle('drawing', painting);
+      document.body.classList.toggle('erasing', state.eraseMode);
+      document.body.classList.toggle('moving', moving);
+      els.btnDraw.classList.toggle('on', state.drawMode);
+      els.btnErase.classList.toggle('on', state.eraseMode);
+      els.btnMove.classList.toggle('on', state.moveOn);
+      els.inkFill.classList.toggle('eraser', state.eraseMode);
+      els.inkFill.style.background = state.eraseMode ? '' : TEAMS[state.team].color;
+    }
+
     function setDrawMode(on) {
       state.drawMode = on;
-      document.body.classList.toggle('drawing', on);
-      els.btnDraw.classList.toggle('on', on);
+      if (on) state.eraseMode = false;
       if (!on) stopDraw();
+      refreshModes();
     }
+
+    function setEraseMode(on) {
+      state.eraseMode = on;
+      if (on) state.drawMode = false;
+      if (!on) stopDraw();
+      refreshModes();
+    }
+
     els.btnDraw.addEventListener('click', () => setDrawMode(!state.drawMode));
+    els.btnErase.addEventListener('click', () => setEraseMode(!state.eraseMode));
+    els.btnMove.addEventListener('click', () => {
+      state.moveOn = !state.moveOn;
+      refreshModes();
+    });
     els.btnClear.addEventListener('click', clearAll);
     els.teamButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         state.team = btn.dataset.team;
         els.teamButtons.forEach((b) => b.classList.toggle('on', b === btn));
-        els.inkFill.style.background = TEAMS[state.team].color;
+        refreshModes();
       });
     });
-    els.inkFill.style.background = TEAMS[state.team].color;
+    // Shift를 누르고 있는 동안에는 칠하지 않고 로드뷰를 움직입니다.
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Shift' && !state.shiftHeld) {
+        state.shiftHeld = true;
+        refreshModes();
+      }
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'Shift') {
+        state.shiftHeld = false;
+        refreshModes();
+      }
+    });
+    refreshModes();
 
     // ===== Google Maps 불러오기 =====
     function loadGoogleMaps() {
