@@ -3,17 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>로드뷰 스플랫</title>
+  <title>SPLATSTREET - 게임 모음</title>
   <style>
-    :root { --ink: #111; --yellow: #f2ff00; --orange: #ff6b1a; --paper: #f7f6ee; }
+    :root { --ink: #111; --yellow: #f2ff00; --orange: #ff6b1a; --pink: #f8a9c4; --paper: #f7f6ee; }
     html, body { margin: 0; min-height: 100%; background: var(--paper); color: var(--ink); font-family: "Arial Black", "Malgun Gothic", Arial, sans-serif; }
     header { padding: 28px 20px 20px; border-bottom: 3px solid var(--ink); }
     .logo { display: inline-block; background: var(--ink); color: #fff; font-weight: 900; font-size: 26px; padding: 8px 18px; transform: skewX(-12deg); text-shadow: 3px 3px 0 var(--yellow); }
     .logo span { display: inline-block; transform: skewX(12deg); }
-    main { padding: 24px 20px 40px; max-width: 420px; }
+    main { padding: 24px 20px 40px; max-width: 420px; display: flex; flex-direction: column; gap: 20px; }
     .card { display: flex; flex-direction: column; gap: 10px; padding: 18px; background: #fff; border: 3px solid var(--ink); box-shadow: 6px 6px 0 var(--ink); text-decoration: none; color: var(--ink); }
     .card:hover { transform: translate(-3px, -3px); box-shadow: 9px 9px 0 var(--ink); }
-    .tag { align-self: flex-start; background: var(--orange); border: 2px solid var(--ink); padding: 2px 10px; font-size: 12px; font-weight: 900; transform: skewX(-12deg); }
+    .tag { align-self: flex-start; background: var(--pink); border: 2px solid var(--ink); padding: 2px 10px; font-size: 12px; font-weight: 900; transform: skewX(-12deg); }
+    .tag.paint { background: var(--orange); }
     .tag span { display: inline-block; transform: skewX(12deg); }
     .card h2 { margin: 4px 0 0; font-size: 20px; font-weight: 900; }
     .card p { margin: 0; font-size: 14px; line-height: 1.5; font-family: "Malgun Gothic", Arial, sans-serif; font-weight: 600; }
@@ -23,8 +24,14 @@
 <body>
   <header><div class="logo"><span>SPLATSTREET</span></div></header>
   <main>
+    <a class="card" href="street-monster.html">
+      <span class="tag"><span>SHOOT</span></span>
+      <h2>로드뷰 괴물 사냥</h2>
+      <p>방 안의 목표물을 쏘고, 괴물 방에서는 빨리 벗어나세요. 2분 제한입니다.</p>
+      <span class="go">열기 →</span>
+    </a>
     <a class="card" href="street-view-splat.html">
-      <span class="tag"><span>PAINT</span></span>
+      <span class="tag paint"><span>PAINT</span></span>
       <h2>로드뷰 스플랫</h2>
       <p>로드뷰 위에 팀 색 잉크를 칠하고, 칠한 위치는 미니맵에 남습니다.</p>
       <span class="go">열기 →</span>
