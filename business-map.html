@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>비즈니스 지도 - 이동 시간 비교</title>
+  <style>
+    :root {
+      --paper: #f7f6ee;
+      --ink: #161616;
+      --muted: #6b6b6b;
+      --pink: #f8a9c4;
+      --pink-deep: #f0789f;
+      --alert: #d6245a;
+    }
+    html, body { height: 100%; margin: 0; padding: 0; }
+    body { font-family: "Helvetica Neue", Arial, "Malgun Gothic", sans-serif; color: var(--ink); background: var(--paper); }
+    [hidden] { display: none !important; }
+
+    .app { display: flex; flex-direction: column; height: 100%; }
+
+    header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 16px 20px; border-bottom: 2px solid var(--ink); }
+    header h1 { margin: 0; font-size: 28px; font-weight: 900; letter-spacing: -0.02em; line-height: 1; }
+    .add-form { display: flex; flex: 1 1 320px; flex-wrap: wrap; gap: 8px; min-width: 0; }
+    .add-form input { flex: 1 1 200px; min-width: 0; padding: 11px 16px; border: 2px solid var(--ink); border-radius: 999px; background: #fff; color: var(--ink); font: 15px "Helvetica Neue", Arial, "Malgun Gothic", sans-serif; outline: none; }
+    .add-form input:focus { box-shadow: 0 0 0 4px var(--pink); }
+    button, select { font: inherit; font-weight: 700; padding: 10px 18px; border: 2px solid var(--ink); border-radius: 999px; background: #fff; color: var(--ink); cursor: pointer; }
+    button:not(:disabled):hover, select:hover { background: var(--pink); }
+    button.primary { background: var(--ink); color: var(--paper); }
+    button.primary:not(:disabled):hover { background: var(--pink-deep); color: var(--ink); }
+    button:disabled { opacity: 0.35; cursor: default; }
+    .error { flex-basis: 100%; min-height: 16px; font-size: 13px; font-weight: 700; color: var(--alert); }
+    .origin-name { flex-basis: 100%; font-size: 13px; font-weight: 600; color: var(--muted); }
+
+    main { flex: 1; display: flex; flex-direction: column; min-height: 0; gap: 16px; padding: 16px; }
+
+    /* 맥 윈도우 느낌의 지도 프레임 */
+    .window { flex: 1; display: flex; flex-direction: column; min-height: 320px; background: #fff; border: 2px solid var(--ink); border-radius: 14px; overflow: hidden; box-shadow: 6px 6px 0 var(--ink); }
+    .window-bar { display: flex; align-items: center; gap: 12px; padding: 8px 14px; background: var(--pink); border-bottom: 2px solid var(--ink); font-size: 13px; font-weight: 800; }
+    .dots { display: flex; gap: 6px; }
+    .dots span { width: 11px; height: 11px; border: 2px solid var(--ink); border-radius: 50%; background: #fff; }
+    #map { flex: 1; min-height: 300px; background: #ecebe3; }
+
+    .empty { margin: 0; font-size: 14px; font-weight: 600; color: var(--muted); }
+    .cards { display: flex; gap: 16px; overflow-x: auto; padding: 4px 4px 12px; }
+
+    /* 스티커처럼 떠 있는 목적지 카드 */
+    .card { flex: 0 0 250px; box-sizing: border-box; padding: 14px; background: #fff; border: 2px solid var(--ink); border-radius: 14px; box-shadow: 4px 4px 0 var(--ink); cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
+    .card:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--ink); }
+    .card:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; }
+    .card.active { background: var(--pink); }
+    .card .top { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; }
+    .badge { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--ink); color: var(--paper); font-size: 13px; font-weight: 900; }
+    .card .name { margin: 10px 0 4px; font-size: 15px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card .eta { font-size: 30px; font-weight: 900; letter-spacing: -0.02em; }
+    .card .actions { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 12px; font-weight: 700; }
+    .card .actions a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+    .card .del { padding: 4px 12px; font-size: 12px; color: var(--alert); }
+
+    @media (max-width: 600px) {
+      header h1 { width: 100%; }
+      .add-form { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>비즈니스 지도</h1>
+      <form class="add-form" id="origin-form" autocomplete="off">
+        <input type="text" id="origin-input" placeholder="출발지(사업장) 주소 검색" aria-label="출발지 검색">
+        <button type="submit" id="origin-btn" disabled>출발지 설정</button>
+        <div class="origin-name" id="origin-name"></div>
+      </form>
+      <form class="add-form" id="add-form" autocomplete="off">
+        <input type="text" id="place-input" placeholder="목적지 장소 또는 주소 검색" aria-label="목적지 검색" required>
+        <select id="mode" aria-label="이동 수단">
+          <option value="DRIVING">자동차</option>
+          <option value="TRANSIT">대중교통</option>
+          <option value="BICYCLING">자전거</option>
+          <option value="WALKING">도보</option>
+        </select>
+        <button class="primary" id="add-btn" type="submit" disabled>목적지 추가</button>
+        <div class="error" id="error" role="alert"></div>
+      </form>
+    </header>
+
+    <main>
+      <div class="window">
+        <div class="window-bar"><span class="dots"><span></span><span></span><span></span></span>MAP · 이동 시간 비교</div>
+        <div id="map"></div>
+      </div>
+      <section class="panel">
+        <p class="empty" id="empty">목적지를 추가하면 출발지에서의 이동 시간과 경로가 표시됩니다. (최대 10곳)</p>
+        <div class="cards" id="cards"></div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    'use strict';
+
+    // ===== 설정 =====
+    const CONFIG = {
+      apiKey: 'YOUR_API_KEY',
+      origin: { lat: 35.8567, lng: 128.6237 },       // 기본 출발지 (위도, 경도). 화면에서 출발지를 바꿀 수 있습니다.
+      originName: '사업장',
+      defaultMode: 'DRIVING',                        // DRIVING | TRANSIT | BICYCLING | WALKING
+      maxDestinations: 10,
+      searchRadiusDeg: 0.5,                          // 자동완성 검색 범위 (약 50km)
+    };
+
+    const MODE_LABEL = { DRIVING: '자동차', TRANSIT: '대중교통', BICYCLING: '자전거', WALKING: '도보' };
+    const LABELS = 'ABCDEFGHIJ';
+
+    // 지도 바탕과 핀 색 (디자인 가이드 토큰과 같은 값)
+    const PIN = { origin: '#161616', idle: '#ffffff', active: '#f8a9c4' };
+
+    // 지도 자체를 크림·핑크 톤으로 바꿉니다.
+    const MAP_STYLE = [
+      { elementType: 'geometry', stylers: [{ color: '#f7f6ee' }] },
+      { elementType: 'labels.text.fill', stylers: [{ color: '#161616' }] },
+      { elementType: 'labels.text.stroke', stylers: [{ color: '#f7f6ee' }] },
+      { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
+      { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#d9d6c8' }] },
+      { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#f8d3e0' }] },
+      { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#f2d4df' }] },
+      { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#ebe7d6' }] },
+      { featureType: 'poi', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+      { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+    ];
+
+    // 맥 창 느낌의 둥근 핀 아이콘 (검정 외곽선)
+    function pinIcon(fill) {
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="44" viewBox="0 0 36 44">' +
+        `<path d="M18 2C9.2 2 2 9.2 2 18c0 11.8 16 24 16 24s16-12.2 16-24C34 9.2 26.8 2 18 2z" fill="${fill}" stroke="#161616" stroke-width="2.5"/>` +
+        '</svg>';
+      return {
+        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+        scaledSize: new google.maps.Size(36, 44),
+        anchor: new google.maps.Point(18, 42),
+        labelOrigin: new google.maps.Point(18, 17),
+      };
+    }
+
+    const state = {
+      map: null,
+      origin: { lat: CONFIG.origin.lat, lng: CONFIG.origin.lng, name: CONFIG.originName },
+      originMarker: null,
+      originPlace: null,
+      selectedPlace: null,
+      destinations: [],
+      active: -1,
+    };
+
+    const els = {
+      originForm: document.getElementById('origin-form'),
+      originInput: document.getElementById('origin-input'),
+      originBtn: document.getElementById('origin-btn'),
+      originName: document.getElementById('origin-name'),
+      form: document.getElementById('add-form'),
+      input: document.getElementById('place-input'),
+      mode: document.getElementById('mode'),
+      addBtn: document.getElementById('add-btn'),
+      error: document.getElementById('error'),
+      empty: document.getElementById('empty'),
+      cards: document.getElementById('cards'),
+    };
+
+    // 출발지 저장
+    const ORIGIN_KEY = 'business-map:origin';
+
+    function readOrigin() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(ORIGIN_KEY));
+        return saved && typeof saved.lat === 'number' && typeof saved.lng === 'number' ? saved : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function saveOrigin() {
+      try {
+        localStorage.setItem(ORIGIN_KEY, JSON.stringify(state.origin));
+      } catch {
+        // 저장소를 쓸 수 없는 환경(비공개 모드 등)에서는 무시합니다.
+      }
+    }
+
+    // 목적지 저장: 경로 데이터는 저장하지 않고, 불러올 때 다시 계산합니다.
+    const STORAGE_KEY = 'business-map:destinations';
+
+    function readSaved() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        return Array.isArray(saved) ? saved : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveDestinations() {
+      const items = state.destinations.map(({ place_id, name, mode }) => ({ place_id, name, mode }));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+      } catch {
+        // 저장소를 쓸 수 없는 환경(비공개 모드 등)에서는 무시합니다.
+      }
+    }
+
+    // 목록의 목적지들을 현재 출발지 기준으로 경로를 계산해 추가합니다.
+    async function routeAll(items) {
+      for (const item of items) {
+        if (state.destinations.length >= CONFIG.maxDestinations) break;
+        const dest = {
+          place_id: item.place_id,
+          name: item.name,
+          mode: item.mode,
+          label: LABELS[state.destinations.length],
+        };
+        try {
+          drawRoute(dest, await requestRoute(dest));
+          state.destinations.push(dest);
+        } catch (err) {
+          showError(`"${item.name}"의 경로를 가져오지 못했습니다 (${err}).`);
+        }
+      }
+      if (state.destinations.length) setActive(0);
+      render();
+    }
+
+    async function restoreSaved() {
+      await routeAll(readSaved());
+      saveDestinations();
+    }
+
+    async function changeOrigin() {
+      const place = state.originPlace;
+      if (!place) return;
+
+      const loc = place.geometry.location;
+      state.origin = { lat: loc.lat(), lng: loc.lng(), name: place.name || place.formatted_address };
+      state.originPlace = null;
+      els.originBtn.disabled = true;
+      els.originInput.value = '';
+      showError('');
+      showOriginName();
+      saveOrigin();
+      state.originMarker.setPosition(originLatLng());
+      state.originMarker.setTitle(state.origin.name);
+      state.map.setCenter(originLatLng());
+
+      // 기존 목적지의 경로를 모두 지우고 새 출발지 기준으로 다시 계산합니다.
+      const items = state.destinations.map(({ place_id, name, mode }) => ({ place_id, name, mode }));
+      state.destinations.forEach((d) => {
+        d.line.setMap(null);
+        d.marker.setMap(null);
+      });
+      state.destinations = [];
+      state.active = -1;
+      render();
+      await routeAll(items);
+      saveDestinations();
+    }
+
+    function originLatLng() {
+      return { lat: state.origin.lat, lng: state.origin.lng };
+    }
+
+    function showOriginName() {
+      els.originName.textContent = `현재 출발지: ${state.origin.name}`;
+    }
+
+    // Google Maps 콜백
+    function initMap() {
+      state.origin = readOrigin() || state.origin;
+      state.map = new google.maps.Map(document.getElementById('map'), {
+        center: originLatLng(),
+        zoom: 14,
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: true,
+        styles: MAP_STYLE,
+      });
+      state.originMarker = new google.maps.Marker({
+        position: originLatLng(),
+        map: state.map,
+        title: state.origin.name,
+        icon: pinIcon(PIN.origin),
+        label: { text: '●', color: '#f7f6ee', fontWeight: 'bold' },
+      });
+      showOriginName();
+
+      const r = CONFIG.searchRadiusDeg;
+      const bounds = (origin) => ({
+        north: origin.lat + r, south: origin.lat - r, east: origin.lng + r, west: origin.lng - r,
+      });
+      const fields = ['place_id', 'name', 'formatted_address', 'geometry'];
+
+      // 출발지 검색
+      const originAutocomplete = new google.maps.places.Autocomplete(els.originInput, {
+        bounds: bounds(state.origin),
+        fields,
+      });
+      originAutocomplete.addListener('place_changed', () => {
+        const place = originAutocomplete.getPlace();
+        state.originPlace = place && place.geometry ? place : null;
+        els.originBtn.disabled = !state.originPlace;
+        showError(state.originPlace ? '' : '출발지는 목록에서 장소를 선택해 주세요.');
+      });
+      els.originInput.addEventListener('input', () => {
+        state.originPlace = null;
+        els.originBtn.disabled = true;
+      });
+      els.originForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        changeOrigin();
+      });
+
+      // 목적지 검색
+      const destAutocomplete = new google.maps.places.Autocomplete(els.input, {
+        bounds: bounds(state.origin),
+        fields,
+      });
+      destAutocomplete.addListener('place_changed', () => {
+        const place = destAutocomplete.getPlace();
+        state.selectedPlace = place && place.geometry ? place : null;
+        els.addBtn.disabled = !state.selectedPlace;
+        showError(state.selectedPlace ? '' : '목록에서 장소를 선택해 주세요.');
+      });
+      els.input.addEventListener('input', () => {
+        state.selectedPlace = null;
+        els.addBtn.disabled = true;
+      });
+
+      els.mode.value = CONFIG.defaultMode;
+      els.form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        addDestination();
+      });
+      els.cards.addEventListener('click', onCardsClick);
+      els.cards.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.target.classList.contains('card')) {
+          setActive(Number(e.target.dataset.index));
+        }
+      });
+      render();
+      restoreSaved();
+    }
+    window.initMap = initMap;
+
+    async function addDestination() {
+      const place = state.selectedPlace;
+      if (!place) return;
+      if (state.destinations.some((d) => d.place_id === place.place_id)) {
+        return showError('이미 추가된 목적지입니다.');
+      }
+      if (state.destinations.length >= CONFIG.maxDestinations) {
+        return showError(`목적지는 최대 ${CONFIG.maxDestinations}곳까지 추가할 수 있습니다.`);
+      }
+
+      const dest = {
+        place_id: place.place_id,
+        name: place.name || place.formatted_address,
+        mode: els.mode.value,
+        label: LABELS[state.destinations.length],
+      };
+
+      els.addBtn.disabled = true;
+      try {
+        const result = await requestRoute(dest);
+        drawRoute(dest, result);
+        state.destinations.push(dest);
+        saveDestinations();
+        els.input.value = '';
+        state.selectedPlace = null;
+        showError('');
+        setActive(state.destinations.length - 1);
+      } catch (err) {
+        showError(`경로를 가져오지 못했습니다 (${err}).`);
+      }
+      els.addBtn.disabled = !state.selectedPlace;
+    }
+
+    function requestRoute(dest) {
+      return new Promise((resolve, reject) => {
+        new google.maps.DirectionsService().route(
+          {
+            origin: originLatLng(),
+            destination: { placeId: dest.place_id },
+            travelMode: dest.mode,
+            unitSystem: google.maps.UnitSystem.METRIC,
+          },
+          (result, status) => (status === 'OK' ? resolve(result) : reject(status))
+        );
+      });
+    }
+
+    // 경로 정보 계산 후 지도에 경로선과 마커 표시
+    function drawRoute(dest, result) {
+      const route = result.routes[0];
+      const leg = route.legs[0];
+      dest.distance = leg.distance.text;
+      dest.duration = formatDuration(leg.duration.value);
+      dest.bounds = route.bounds;
+      dest.url = 'https://www.google.com/maps/dir/?api=1' +
+        `&origin=${state.origin.lat},${state.origin.lng}` +
+        `&destination=${encodeURIComponent(dest.name)}` +
+        `&destination_place_id=${encodeURIComponent(dest.place_id)}` +
+        `&travelmode=${dest.mode.toLowerCase()}`;
+
+      dest.line = new google.maps.Polyline({
+        path: route.overview_path,
+        strokeColor: '#161616',
+        strokeOpacity: 0.35,
+        strokeWeight: 4,
+        zIndex: 1,
+        map: state.map,
+      });
+      dest.marker = new google.maps.Marker({
+        position: leg.end_location,
+        map: state.map,
+        title: dest.name,
+        icon: pinIcon(PIN.idle),
+        label: markerLabel(dest.label),
+      });
+      dest.marker.addListener('click', () => setActive(state.destinations.indexOf(dest)));
+    }
+
+    function setActive(index) {
+      state.active = index;
+      state.destinations.forEach((d, i) => {
+        const on = i === index;
+        d.line.setOptions({
+          strokeColor: on ? PIN.active : '#161616',
+          strokeOpacity: on ? 1 : 0.35,
+          strokeWeight: on ? 7 : 4,
+          zIndex: on ? 100 : 1,
+        });
+        d.marker.setIcon(pinIcon(on ? PIN.active : PIN.idle));
+      });
+      const dest = state.destinations[index];
+      if (dest) state.map.fitBounds(dest.bounds);
+      render();
+    }
+
+    function removeDestination(index) {
+      const [dest] = state.destinations.splice(index, 1);
+      dest.line.setMap(null);
+      dest.marker.setMap(null);
+
+      // 라벨을 A, B, C… 순서로 다시 맞춤
+      state.destinations.forEach((d, i) => {
+        d.label = LABELS[i];
+        d.marker.setLabel(markerLabel(d.label));
+      });
+
+      saveDestinations();
+      const next = index === state.active
+        ? Math.min(index, state.destinations.length - 1)
+        : state.active > index ? state.active - 1 : state.active;
+      setActive(next);
+    }
+
+    function onCardsClick(e) {
+      const card = e.target.closest('.card');
+      if (!card) return;
+      const index = Number(card.dataset.index);
+      if (e.target.closest('[data-action="delete"]')) return removeDestination(index);
+      if (e.target.closest('a')) return;
+      setActive(index);
+    }
+
+    function render() {
+      els.empty.hidden = state.destinations.length > 0;
+      els.cards.innerHTML = state.destinations.map((d, i) => `
+        <article class="card${i === state.active ? ' active' : ''}" data-index="${i}" tabindex="0" role="button">
+          <div class="top"><span class="badge">${d.label}</span>${MODE_LABEL[d.mode]} · ${escapeHtml(d.distance)}</div>
+          <div class="name" title="${escapeHtml(d.name)}">${escapeHtml(d.name)}</div>
+          <div class="eta">${escapeHtml(d.duration)}</div>
+          <div class="actions">
+            <a href="${escapeHtml(d.url)}" target="_blank" rel="noopener">구글 지도에서 길찾기</a>
+            <button class="del" type="button" data-action="delete">삭제</button>
+          </div>
+        </article>`).join('');
+    }
+
+    function markerLabel(text) {
+      return { text, color: '#161616', fontWeight: 'bold' };
+    }
+
+    function formatDuration(seconds) {
+      const minutes = Math.round(seconds / 60);
+      if (minutes < 1) return '1분 미만';
+      const h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      if (!h) return `${m}분`;
+      return m ? `${h}시간 ${m}분` : `${h}시간`;
+    }
+
+    function showError(message) {
+      els.error.textContent = message;
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (c) => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      ));
+    }
+
+    function loadGoogleMaps() {
+      if (!CONFIG.apiKey || CONFIG.apiKey === 'YOUR_API_KEY') {
+        showError('CONFIG.apiKey에 Google Maps API 키를 입력하세요.');
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://maps.googleapis.com/maps/api/js?' + new URLSearchParams({
+        key: CONFIG.apiKey,
+        libraries: 'places',
+        language: 'ko',
+        callback: 'initMap',
+      });
+      script.async = true;
+      script.onerror = () => showError('Google 지도를 불러오지 못했습니다. API 키와 네트워크를 확인하세요.');
+      document.head.appendChild(script);
+    }
+
+    loadGoogleMaps();
+  </script>
+</body>
+</html>

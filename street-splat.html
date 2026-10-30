@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <title>스트리트 스플랫</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+  <style>
+    :root { --ink: #111; --yellow: #f2ff00; --orange: #ff6b1a; --green: #2ff28a; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #111; color: var(--ink); font-family: "Arial Black", "Malgun Gothic", Arial, sans-serif; }
+
+    #wrap { position: fixed; inset: 0; }
+    #map { position: absolute; inset: 0; background: #f4f4f4; }
+    /* 기본 지도 타일을 밝고 부드러운 톤으로 */
+    .leaflet-tile-pane { filter: grayscale(0.6) brightness(1.08) contrast(0.92) sepia(0.12); }
+    /* 칠한 잉크를 그리는 캔버스. 지도 위, 컨트롤 아래 */
+    #ink { position: absolute; left: 0; top: 0; z-index: 450; pointer-events: none; }
+    body.drawing #map { cursor: crosshair; touch-action: none; }
+
+    /* 상단 HUD */
+    .hud { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; gap: 10px; align-items: stretch; z-index: 1000; pointer-events: none; }
+    .logo { display: flex; align-items: center; background: var(--ink); color: #fff; font-weight: 900; font-size: 20px; padding: 6px 16px; white-space: nowrap; transform: skewX(-12deg); text-shadow: 3px 3px 0 var(--yellow); }
+    .logo span { transform: skewX(12deg); }
+    .score { position: relative; flex: 1; height: 44px; display: flex; overflow: hidden; background: #fff; border: 3px solid var(--ink); transform: skewX(-12deg); }
+    .side { height: 100%; width: 50%; display: flex; align-items: center; transition: width 0.3s; }
+    .side.orange { background: var(--orange); justify-content: flex-start; }
+    .side.green { background: var(--green); justify-content: flex-end; }
+    .side .pct { transform: skewX(12deg); font-weight: 900; font-size: 16px; padding: 0 12px; white-space: nowrap; }
+    .total { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) skewX(12deg); background: var(--ink); color: #fff; font-size: 12px; font-weight: 900; padding: 3px 9px; white-space: nowrap; }
+
+    /* 하단 패널 */
+    .bottom { position: absolute; left: 12px; right: 12px; bottom: 14px; display: flex; flex-direction: column; gap: 10px; z-index: 1000; }
+    .ink-row { display: flex; align-items: center; gap: 10px; pointer-events: none; }
+    .ink-label { background: var(--ink); color: #fff; font-weight: 900; font-size: 14px; padding: 4px 10px; transform: skewX(-12deg); }
+    .ink-label span { display: inline-block; transform: skewX(12deg); }
+    .ink-track { flex: 1; max-width: 420px; height: 22px; background: #fff; border: 3px solid var(--ink); transform: skewX(-12deg); overflow: hidden; }
+    #inkFill { height: 100%; width: 100%; background: var(--orange); transition: background 0.2s; }
+
+    .buttons { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    .btn { font: inherit; font-weight: 900; font-size: 16px; color: var(--ink); background: #fff; border: 3px solid var(--ink); padding: 10px 18px; cursor: pointer; transform: skewX(-12deg); box-shadow: 4px 4px 0 var(--ink); transition: transform 0.08s, box-shadow 0.08s, background 0.08s; }
+    .btn span { display: inline-block; transform: skewX(12deg); }
+    .btn:hover { background: #f7f7f7; }
+    .btn:active { transform: skewX(-12deg) translate(3px, 3px); box-shadow: 1px 1px 0 var(--ink); }
+    .btn.on { background: var(--yellow); }
+    .team { width: 46px; height: 46px; padding: 0; border: 3px solid var(--ink); cursor: pointer; transform: skewX(-12deg); box-shadow: 4px 4px 0 var(--ink); }
+    .team.on { outline: 4px solid var(--yellow); outline-offset: 2px; }
+
+    .toast { position: absolute; top: 84px; left: 50%; z-index: 1100; white-space: nowrap; background: var(--yellow); color: var(--ink); font-weight: 900; font-size: 20px; padding: 10px 22px; border: 3px solid var(--ink); box-shadow: 6px 6px 0 var(--ink); opacity: 0; pointer-events: none; transform: translateX(-50%) skewX(-12deg) scale(0.9); transition: opacity 0.15s, transform 0.15s; }
+    .toast.show { opacity: 1; transform: translateX(-50%) skewX(-12deg) scale(1); }
+
+    @media (max-width: 640px) {
+      .logo { font-size: 15px; padding: 5px 10px; }
+      .hud { flex-wrap: wrap; }
+      .score { flex-basis: 100%; }
+      .btn { font-size: 14px; padding: 8px 12px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <div id="map"></div>
+    <canvas id="ink"></canvas>
+
+    <header class="hud">
+      <div class="logo"><span>STREET SPLAT</span></div>
+      <div class="score">
+        <div class="side orange" id="sideOrange"><span class="pct" id="pctOrange">0%</span></div>
+        <div class="side green" id="sideGreen"><span class="pct" id="pctGreen">0%</span></div>
+        <div class="total" id="total">칠한 칸 0</div>
+      </div>
+    </header>
+
+    <div class="toast" id="toast" role="status"></div>
+
+    <footer class="bottom">
+      <div class="ink-row">
+        <span class="ink-label"><span>INK</span></span>
+        <div class="ink-track"><div id="inkFill"></div></div>
+      </div>
+      <div class="buttons">
+        <button class="team on" data-team="orange" style="background:#ff6b1a" aria-label="오렌지 팀"></button>
+        <button class="team" data-team="green" style="background:#2ff28a" aria-label="그린 팀"></button>
+        <button class="btn" id="btnDraw" type="button"><span>칠하기</span></button>
+        <button class="btn" id="btnWalk" type="button"><span>걷기</span></button>
+        <button class="btn" id="btnClear" type="button"><span>지우기</span></button>
+      </div>
+    </footer>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+  <script>
+    'use strict';
+
+    // ===== 설정 =====
+    const CONFIG = {
+      center: [37.5665, 126.978],  // 처음 보여줄 위치 (서울). 위치 권한을 허용하면 내 위치로 이동합니다.
+      zoom: 17,
+      step: 0.00022,               // 칸 크기 (약 20m)
+      brushMeters: 16,             // 잉크 방울 반지름 (미터)
+      inkMax: 100,
+    };
+
+    const TEAMS = {
+      orange: { name: '오렌지', color: '#ff6b1a' },
+      green: { name: '그린', color: '#2ff28a' },
+    };
+    const STORAGE_KEY = 'street-splat:v1';
+
+    const counts = { orange: 0, green: 0 };
+    const state = {
+      team: 'orange',
+      drawMode: false,
+      drawing: false,
+      last: null,
+      walkMode: false,
+      watchId: null,
+      follow: true,
+      ink: CONFIG.inkMax,
+      lastPaintAt: 0,
+      saveTimer: null,
+    };
+
+    // 칸 기록: { "행,열": [팀, 크기 변화값] }
+    let cells = loadCells();
+    for (const key in cells) counts[cells[key][0]] += 1;
+
+    const els = {
+      canvas: document.getElementById('ink'),
+      sideOrange: document.getElementById('sideOrange'),
+      sideGreen: document.getElementById('sideGreen'),
+      pctOrange: document.getElementById('pctOrange'),
+      pctGreen: document.getElementById('pctGreen'),
+      total: document.getElementById('total'),
+      inkFill: document.getElementById('inkFill'),
+      toast: document.getElementById('toast'),
+      btnDraw: document.getElementById('btnDraw'),
+      btnWalk: document.getElementById('btnWalk'),
+      btnClear: document.getElementById('btnClear'),
+      teamButtons: document.querySelectorAll('.team'),
+    };
+    const ctx = els.canvas.getContext('2d');
+
+    // ===== 지도 =====
+    const map = L.map('map', { zoomControl: false }).setView(CONFIG.center, CONFIG.zoom);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(map);
+
+    map.on('move zoom', scheduleRedraw);
+    map.on('resize', resizeCanvas);
+    map.on('dragstart', () => { state.follow = false; });
+
+    function resizeCanvas() {
+      const { x, y } = map.getSize();
+      const dpr = window.devicePixelRatio || 1;
+      els.canvas.width = x * dpr;
+      els.canvas.height = y * dpr;
+      els.canvas.style.width = x + 'px';
+      els.canvas.style.height = y + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      redraw();
+    }
+
+    let redrawQueued = false;
+    function scheduleRedraw() {
+      if (redrawQueued) return;
+      redrawQueued = true;
+      requestAnimationFrame(() => {
+        redrawQueued = false;
+        redraw();
+      });
+    }
+
+    // 칸마다 잉크 방울을 그립니다. 검정 외곽선을 먼저 깔고 색을 칠합니다.
+    function redraw() {
+      const { x: w, y: h } = map.getSize();
+      ctx.clearRect(0, 0, w, h);
+
+      const metersPerPx = 156543.03392 * Math.cos(map.getCenter().lat * Math.PI / 180) / Math.pow(2, map.getZoom());
+      const baseR = Math.min(60, Math.max(3, CONFIG.brushMeters / metersPerPx));
+      const visible = [];
+      for (const key in cells) {
+        const [i, j] = key.split(',').map(Number);
+        const p = map.latLngToContainerPoint([i * CONFIG.step, j * CONFIG.step]);
+        const r = baseR * cells[key][1];
+        if (p.x < -r || p.y < -r || p.x > w + r || p.y > h + r) continue;
+        visible.push({ p, r, team: cells[key][0] });
+      }
+
+      ctx.fillStyle = '#111';
+      for (const d of visible) {
+        ctx.beginPath();
+        ctx.arc(d.p.x, d.p.y, d.r + 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      for (const d of visible) {
+        ctx.beginPath();
+        ctx.arc(d.p.x, d.p.y, d.r, 0, Math.PI * 2);
+        ctx.fillStyle = TEAMS[d.team].color;
+        ctx.fill();
+      }
+    }
+
+    // ===== 칠하기 =====
+    function cellKey(ll) {
+      return Math.round(ll.lat / CONFIG.step) + ',' + Math.round(ll.lng / CONFIG.step);
+    }
+
+    // 칸을 칠합니다. 이미 같은 팀 색이면 false, 칠했으면 true를 돌려줍니다.
+    function paintAt(ll, team) {
+      const key = cellKey(ll);
+      const old = cells[key];
+      if (old && old[0] === team) return false;
+      if (old) counts[old[0]] -= 1;
+      cells[key] = [team, 0.85 + Math.random() * 0.35];
+      counts[team] += 1;
+      markDirty();
+      return true;
+    }
+
+    // free가 true면 잉크를 쓰지 않습니다 (걷기 모드).
+    function paintPoint(ll, free = false) {
+      if (!free && state.ink < 1) {
+        notify('잉크가 부족해요!');
+        return false;
+      }
+      if (paintAt(ll, state.team) && !free) {
+        state.ink -= 1;
+        state.lastPaintAt = Date.now();
+      }
+      return true;
+    }
+
+    // 두 화면 좌표 사이를 촘촘히 채워서 끊기지 않게 칠합니다.
+    function paintBetween(a, b) {
+      const steps = Math.max(1, Math.ceil(a.distanceTo(b) / 4));
+      for (let s = 1; s <= steps; s++) {
+        const pt = a.add(b.subtract(a).multiplyBy(s / steps));
+        if (!paintPoint(map.containerPointToLatLng(pt))) {
+          stopDrawing();
+          return;
+        }
+      }
+    }
+
+    function eventPoint(e) {
+      const r = map.getContainer().getBoundingClientRect();
+      return L.point(e.clientX - r.left, e.clientY - r.top);
+    }
+
+    function stopDrawing() {
+      state.drawing = false;
+      state.last = null;
+    }
+
+    const host = map.getContainer();
+    host.addEventListener('pointerdown', (e) => {
+      if (!state.drawMode || e.button !== 0 || e.target.closest('.leaflet-control')) return;
+      state.drawing = true;
+      state.last = eventPoint(e);
+      paintBetween(state.last, state.last);
+      e.preventDefault();
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (!state.drawing) return;
+      const p = eventPoint(e);
+      paintBetween(state.last, p);
+      state.last = p;
+    });
+    window.addEventListener('pointerup', stopDrawing);
+    window.addEventListener('pointercancel', stopDrawing);
+
+    function setDrawMode(on) {
+      state.drawMode = on;
+      document.body.classList.toggle('drawing', on);
+      if (on) map.dragging.disable();
+      else map.dragging.enable();
+      els.btnDraw.classList.toggle('on', on);
+    }
+
+    // ===== 걷기 (실제 위치를 따라 칠하기) =====
+    function setWalkMode(on) {
+      if (on) {
+        if (!navigator.geolocation) {
+          notify('이 기기에서는 위치를 쓸 수 없어요');
+          return;
+        }
+        state.walkMode = true;
+        state.follow = true;
+        state.watchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            const ll = L.latLng(pos.coords.latitude, pos.coords.longitude);
+            if (state.follow) map.panTo(ll);
+            paintPoint(ll, true);
+          },
+          () => {
+            notify('위치 권한을 허용해 주세요');
+            setWalkMode(false);
+          },
+          { enableHighAccuracy: true, maximumAge: 2000 }
+        );
+      } else {
+        if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId);
+        state.watchId = null;
+        state.walkMode = false;
+      }
+      els.btnWalk.classList.toggle('on', state.walkMode);
+    }
+
+    // ===== 잉크 게이지 (칠하지 않으면 천천히 회복) =====
+    setInterval(() => {
+      if (!state.drawing && Date.now() - state.lastPaintAt > 500 && state.ink < CONFIG.inkMax) {
+        state.ink = Math.min(CONFIG.inkMax, state.ink + 1);
+      }
+      els.inkFill.style.width = (state.ink / CONFIG.inkMax * 100) + '%';
+    }, 50);
+
+    // ===== 점수, 저장 =====
+    function markDirty() {
+      scheduleRedraw();
+      updateHud();
+      clearTimeout(state.saveTimer);
+      state.saveTimer = setTimeout(saveNow, 800);
+    }
+
+    function updateHud() {
+      const total = counts.orange + counts.green;
+      const orangeShare = total ? counts.orange / total * 100 : 50;
+      els.sideOrange.style.width = orangeShare + '%';
+      els.sideGreen.style.width = (100 - orangeShare) + '%';
+      els.pctOrange.textContent = (total ? Math.round(counts.orange / total * 100) : 0) + '%';
+      els.pctGreen.textContent = (total ? Math.round(counts.green / total * 100) : 0) + '%';
+      els.total.textContent = `칠한 칸 ${total}`;
+    }
+
+    function loadCells() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        const out = {};
+        if (raw && typeof raw === 'object') {
+          for (const key in raw) {
+            const v = raw[key];
+            if (Array.isArray(v) && TEAMS[v[0]]) out[key] = v;
+          }
+        }
+        return out;
+      } catch {
+        return {};
+      }
+    }
+
+    function saveNow() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(cells));
+      } catch {
+        notify('저장 공간이 부족해요');
+      }
+    }
+
+    function clearAll() {
+      if (!confirm('칠한 길을 모두 지울까요?')) return;
+      cells = {};
+      counts.orange = 0;
+      counts.green = 0;
+      saveNow();
+      markDirty();
+      notify('깨끗하게 지웠어요');
+    }
+
+    // ===== 알림 =====
+    let toastTimer = null;
+    function notify(message) {
+      els.toast.textContent = message;
+      els.toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => els.toast.classList.remove('show'), 1600);
+    }
+
+    // ===== 버튼 연결 =====
+    els.teamButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.team = btn.dataset.team;
+        els.teamButtons.forEach((b) => b.classList.toggle('on', b === btn));
+        els.inkFill.style.background = TEAMS[state.team].color;
+      });
+    });
+    els.btnDraw.addEventListener('click', () => setDrawMode(!state.drawMode));
+    els.btnWalk.addEventListener('click', () => setWalkMode(!state.walkMode));
+    els.btnClear.addEventListener('click', clearAll);
+
+    // ===== 시작 =====
+    els.inkFill.style.background = TEAMS[state.team].color;
+    resizeCanvas();
+    updateHud();
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => map.setView([pos.coords.latitude, pos.coords.longitude], CONFIG.zoom),
+        () => {},
+        { timeout: 5000 }
+      );
+    }
+  </script>
+</body>
+</html>
