@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SPLATSTREET - 지도 앱 모음</title>
+  <style>
+    :root { --ink: #111; --yellow: #f2ff00; --orange: #ff6b1a; --green: #2ff28a; --paper: #f7f6ee; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--paper); color: var(--ink); font-family: "Arial Black", "Malgun Gothic", Arial, sans-serif; }
+
+    header { padding: 28px 20px 20px; border-bottom: 3px solid var(--ink); }
+    .logo { display: inline-block; background: var(--ink); color: #fff; font-weight: 900; font-size: 26px; padding: 8px 18px; transform: skewX(-12deg); text-shadow: 3px 3px 0 var(--yellow); }
+    .logo span { display: inline-block; transform: skewX(12deg); }
+    header p { margin: 12px 0 0; font-size: 14px; font-weight: 700; color: #555; }
+
+    main { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; padding: 24px 20px 40px; }
+
+    .card { display: flex; flex-direction: column; gap: 10px; padding: 18px; background: #fff; border: 3px solid var(--ink); box-shadow: 6px 6px 0 var(--ink); text-decoration: none; color: var(--ink); transition: transform 0.12s, box-shadow 0.12s; }
+    .card:hover { transform: translate(-3px, -3px); box-shadow: 9px 9px 0 var(--ink); }
+    .card:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; }
+    .tag { align-self: flex-start; background: var(--yellow); border: 2px solid var(--ink); padding: 2px 10px; font-size: 12px; font-weight: 900; transform: skewX(-12deg); }
+    .tag span { display: inline-block; transform: skewX(12deg); }
+    .card h2 { margin: 4px 0 0; font-size: 20px; font-weight: 900; }
+    .card p { margin: 0; font-size: 14px; line-height: 1.5; color: #333; font-family: "Malgun Gothic", Arial, sans-serif; font-weight: 600; }
+    .card .go { margin-top: auto; font-size: 14px; font-weight: 900; }
+
+    .card.paint .tag { background: var(--orange); }
+    .card.date .tag { background: var(--green); }
+
+    footer { padding: 16px 20px; border-top: 3px solid var(--ink); font-size: 12px; font-weight: 700; color: #555; font-family: "Malgun Gothic", Arial, sans-serif; }
+    footer b { color: var(--ink); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo"><span>SPLATSTREET</span></div>
+    <p>지도 앱 모음입니다. 각 앱을 누르면 새 탭에서 열립니다.</p>
+  </header>
+
+  <main>
+    <a class="card paint" href="street-view-splat.html" target="_blank" rel="noopener">
+      <span class="tag"><span>PAINT</span></span>
+      <h2>로드뷰 스플랫</h2>
+      <p>로드뷰 위에 팀 색 잉크를 칠하고, 칠한 위치는 미니맵에 남습니다. 지우기와 이동을 지원합니다.</p>
+      <span class="go">열기 →</span>
+    </a>
+
+    <a class="card paint" href="street-splat.html" target="_blank" rel="noopener">
+      <span class="tag"><span>PAINT</span></span>
+      <h2>스트리트 스플랫</h2>
+      <p>지도 위를 드래그해서 길을 칠합니다. GPS로 걸은 길을 자동으로 칠하는 걷기 모드가 있습니다.</p>
+      <span class="go">열기 →</span>
+    </a>
+
+    <a class="card" href="business-map.html" target="_blank" rel="noopener">
+      <span class="tag"><span>MAP</span></span>
+      <h2>비즈니스 지도</h2>
+      <p>사업장 출발지에서 목적지까지 이동 시간과 경로를 보여 줍니다. 전세계 검색을 지원합니다.</p>
+      <span class="go">열기 →</span>
+    </a>
+
+    <a class="card" href="business-map-korea.html" target="_blank" rel="noopener">
+      <span class="tag"><span>MAP</span></span>
+      <h2>비즈니스 지도 (국내)</h2>
+      <p>같은 기능을 대한민국 안의 장소로만 검색하도록 제한한 버전입니다.</p>
+      <span class="go">열기 →</span>
+    </a>
+
+    <a class="card date" href="date-spots.html" target="_blank" rel="noopener">
+      <span class="tag"><span>DATE</span></span>
+      <h2>데이트 장소 지도</h2>
+      <p>지역, 분위기, 예산으로 데이트 장소를 골라 지도에서 확인합니다. 랜덤 추천도 있습니다.</p>
+      <span class="go">열기 →</span>
+    </a>
+  </main>
+
+  <footer>
+    <b>참고</b> · 구글 지도를 쓰는 앱은 파일의 <b>apiKey</b> 자리에 본인의 Google Maps API 키를 넣어야 지도가 뜹니다.
+  </footer>
+</body>
+</html>
