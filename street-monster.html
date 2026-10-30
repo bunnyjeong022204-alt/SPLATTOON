@@ -1,0 +1,921 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <title>로드뷰 괴물 사냥</title>
+  <style>
+    :root { --ink: #111; --yellow: #f2ff00; --pink: #f8a9c4; --paper: #f7f6ee; --alert: #d6245a; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #111; color: var(--ink); font-family: "Arial Black", "Malgun Gothic", Arial, sans-serif; }
+
+    #stage { position: fixed; inset: 0; }
+    #pano { position: absolute; inset: 0; background: #222; }
+    #three { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+    #ink { position: absolute; left: 0; top: 0; z-index: 5; pointer-events: none; }
+
+    .crosshair { position: absolute; left: 50%; top: 50%; width: 36px; height: 36px; margin: -18px 0 0 -18px; z-index: 6; pointer-events: none; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 2px var(--ink); }
+    .crosshair::before, .crosshair::after { content: ""; position: absolute; background: var(--ink); }
+    .crosshair::before { left: 14px; top: -10px; width: 3px; height: 50px; }
+    .crosshair::after { top: 14px; left: -10px; height: 3px; width: 50px; }
+
+    .mini { position: absolute; right: 12px; top: 96px; width: 240px; height: 180px; z-index: 10; border: 3px solid var(--ink); box-shadow: 5px 5px 0 var(--ink); overflow: hidden; background: #fff; }
+    #mini { width: 100%; height: 100%; }
+    .mini-tag { position: absolute; left: 0; top: 0; z-index: 11; background: var(--yellow); border-right: 3px solid var(--ink); border-bottom: 3px solid var(--ink); padding: 2px 8px; font-size: 12px; font-weight: 900; }
+
+    .hud { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; gap: 12px; align-items: stretch; z-index: 20; pointer-events: none; flex-wrap: wrap; }
+    .logo { display: flex; align-items: center; background: var(--ink); color: #fff; font-weight: 900; font-size: 18px; padding: 6px 14px; white-space: nowrap; transform: skewX(-12deg); text-shadow: 3px 3px 0 var(--yellow); }
+    .logo span { transform: skewX(12deg); }
+    .stat { display: flex; align-items: center; gap: 8px; background: #fff; border: 3px solid var(--ink); padding: 4px 14px; transform: skewX(-12deg); box-shadow: 4px 4px 0 var(--ink); white-space: nowrap; }
+    .stat span { transform: skewX(12deg); display: inline-block; }
+    .stat .label { font-size: 13px; font-weight: 900; color: #555; }
+    .stat .value { font-size: 22px; font-weight: 900; }
+    .stat.timer { background: var(--yellow); }
+    .stat.timer.low .value { color: var(--alert); }
+    .stat.monster.danger { background: var(--alert); }
+    .stat.monster.danger .label, .stat.monster.danger .value { color: #fff; }
+
+    .btn { font: inherit; font-weight: 900; font-size: 18px; color: var(--ink); background: #fff; border: 3px solid var(--ink); padding: 12px 26px; cursor: pointer; transform: skewX(-12deg); box-shadow: 5px 5px 0 var(--ink); }
+    .btn span { display: inline-block; transform: skewX(12deg); }
+    .btn:hover { background: var(--yellow); }
+    .btn:active { transform: skewX(-12deg) translate(3px, 3px); box-shadow: 1px 1px 0 var(--ink); }
+    .btn:disabled { opacity: 0.5; cursor: default; background: #fff; }
+
+    .start-panel { position: absolute; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; background: rgba(17, 17, 17, 0.55); }
+    .start-panel[hidden] { display: none; }
+    .start-card { background: var(--paper); border: 4px solid var(--ink); box-shadow: 8px 8px 0 var(--ink); padding: 22px 26px; min-width: 300px; text-align: center; }
+    .start-card h2 { margin: 0 0 14px; font-size: 26px; font-weight: 900; transform: skewX(-8deg); text-shadow: 3px 3px 0 var(--yellow); }
+    .start-card .places { display: flex; flex-direction: column; gap: 12px; }
+    .start-card .btn { font-size: 16px; }
+    .start-card .rules { margin: 0 0 18px; padding-left: 20px; text-align: left; font-family: "Malgun Gothic", Arial, sans-serif; font-size: 15px; font-weight: 700; line-height: 1.6; }
+    .start-card .rules li { margin-bottom: 6px; }
+
+    .result { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgba(17, 17, 17, 0.6); }
+    .result[hidden] { display: none; }
+    .result-card { background: var(--paper); border: 4px solid var(--ink); box-shadow: 8px 8px 0 var(--ink); padding: 24px 28px; min-width: 300px; text-align: center; }
+    .result-card h2 { margin: 0 0 8px; font-size: 28px; font-weight: 900; transform: skewX(-8deg); text-shadow: 3px 3px 0 var(--yellow); }
+    .result-card .reason { margin: 0 0 14px; font-size: 16px; font-weight: 900; color: var(--alert); }
+    .result-card p { margin: 6px 0; font-size: 16px; font-weight: 900; }
+    .result-card .big { font-size: 40px; margin: 10px 0 14px; }
+
+    .countdown { position: absolute; left: 50%; top: 42%; z-index: 40; transform: translate(-50%, -50%); font-size: 120px; font-weight: 900; color: var(--alert); text-shadow: 6px 6px 0 #fff, 9px 9px 0 var(--ink); pointer-events: none; }
+    .countdown[hidden] { display: none; }
+    .warn { position: absolute; left: 50%; top: 30%; z-index: 40; transform: translateX(-50%) skewX(-12deg); background: var(--alert); color: #fff; font-weight: 900; font-size: 20px; padding: 8px 18px; border: 3px solid var(--ink); white-space: nowrap; pointer-events: none; }
+    .warn[hidden] { display: none; }
+
+    .toast { position: absolute; top: 300px; left: 50%; z-index: 45; white-space: nowrap; background: var(--yellow); color: var(--ink); font-weight: 900; font-size: 20px; padding: 10px 22px; border: 3px solid var(--ink); box-shadow: 6px 6px 0 var(--ink); opacity: 0; pointer-events: none; transform: translateX(-50%) skewX(-12deg) scale(0.9); transition: opacity 0.15s, transform 0.15s; }
+    .toast.show { opacity: 1; transform: translateX(-50%) skewX(-12deg) scale(1); }
+
+    .fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; color: #fff; font-weight: 900; font-size: 20px; padding: 20px; z-index: 60; background: #111; }
+
+    @media (max-width: 720px) {
+      .mini { width: 150px; height: 115px; top: 150px; }
+      .logo { font-size: 14px; padding: 5px 10px; }
+      .stat .value { font-size: 18px; }
+      .countdown { font-size: 80px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div id="pano"></div>
+    <canvas id="three"></canvas>
+    <canvas id="ink"></canvas>
+    <div class="crosshair"></div>
+
+    <div class="mini">
+      <div class="mini-tag">MINI MAP</div>
+      <div id="mini"></div>
+    </div>
+
+    <header class="hud">
+      <div class="logo"><span>MONSTER HUNT</span></div>
+      <div class="stat timer" id="timerBox"><span class="label">TIME</span><span class="value" id="timer">2:00</span></div>
+      <div class="stat"><span class="label">SCORE</span><span class="value" id="score">0</span></div>
+      <div class="stat"><span class="label">HIT</span><span class="value" id="hits">0</span></div>
+      <div class="stat monster" id="monsterBox"><span class="label">MONSTER</span><span class="value" id="mstat">-</span></div>
+    </header>
+
+    <div class="warn" id="warn" hidden>괴물 지역! 빨리 벗어나세요</div>
+    <div class="countdown" id="countdown" hidden>3</div>
+    <div class="toast" id="toast" role="status"></div>
+
+    <div class="start-panel" id="rulesPanel">
+      <div class="start-card">
+        <h2>괴물을 피해 많은 목표물을 쏘세요</h2>
+        <ul class="rules">
+          <li>제한 시간 2분 안에 목표물을 최대한 많이 맞히세요.</li>
+          <li>목표물은 지금 보고 있는 방 안에 나타납니다. 짧게 클릭하면 명중입니다.</li>
+          <li>괴물은 쏠 수 없습니다. 괴물 지역에 2초 이상 머물면 3초 카운트다운이 시작됩니다.</li>
+          <li>카운트다운 안에 벗어나지 않으면 게임오버입니다.</li>
+          <li>화살표로 다른 장소로 이동하면 새 방이 열리고 목표물이 생깁니다. 이미 간 방에는 목표물이 다시 나오지 않습니다.</li>
+        </ul>
+        <button class="btn" id="nextBtn" type="button"><span>장소 선택하기</span></button>
+      </div>
+    </div>
+
+    <div class="start-panel" id="startPanel" hidden>
+      <div class="start-card">
+        <h2>장소 선택</h2>
+        <div class="places" id="places"></div>
+      </div>
+    </div>
+
+    <div class="result" id="result" hidden>
+      <div class="result-card">
+        <h2>GAME OVER</h2>
+        <p class="reason" id="reason"></p>
+        <p>점수</p>
+        <p class="big" id="resultScore">0</p>
+        <p id="resultHits">명중 0</p>
+        <button class="btn" id="againBtn" type="button"><span>다시 하기</span></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script>
+    'use strict';
+
+    // ===== 설정 =====
+    const CONFIG = {
+      apiKey: 'YOUR_API_KEY',                  // 본인의 Google Maps API 키를 넣으세요
+      places: [
+        { name: '서울 시청 (현재 위치)', lat: 37.5665, lng: 126.978, targets: [
+          { text: '내일까지 보고서 제출', style: 'note' },
+          { text: '회의록 수정 요청', style: 'note' },
+          { text: '건어물 세트 10% 할인', style: 'note' },
+        ] },
+        { name: '경주 대릉원', lat: 35.8366, lng: 129.2136, targets: [
+          { text: '황남빵 한 상자', style: 'card' },
+          { text: '경주빵 단체 주문', style: 'card' },
+        ] },
+        { name: '강남역 (도로)', lat: 37.4979, lng: 127.0276, targets: [
+          { text: '이거 아직 안 됐나?', style: 'bubble' },
+          { text: '배나온 부장님: 언제 돼?', style: 'bubble' },
+          { text: '내일 아침까지 부탁해요', style: 'bubble' },
+        ] },
+      ],
+      gameSeconds: 120,                        // 제한 시간 2분
+      targetCount: 2,                          // 동시에 나타나는 목표물 수
+      targetLifeMs: 60000,                     // 목표물이 머무는 시간
+      targetMin: 40,                           // 목표물 최소 거리 (미터)
+      targetMax: 180,                          // 목표물 최대 거리 (미터)
+      targetPitch: -4,                         // 목표물 높이 (눈높이보다 약간 아래)
+      targetAlpha: 0.6,                        // 목표물 투명도 (낮을수록 배경에 섞임)
+      targetRadiusPx: 80,                      // 목표물 클릭 판정 반경 (화면 픽셀, 거리와 관계없이 같음)
+      monsterCount: 3,                         // 방마다 나타나는 괴물 수 (최소 3마리)
+      monsterChance: 0.4,                      // 연속 2번 이상 괴물을 못 만난 뒤 다음 방에서 괴물이 나올 확률
+      monsterMin: 8,                           // 괴물 최소 거리 (미터)
+      monsterMax: 20,                         // 괴물 최대 거리 (미터)
+      monsterGapM: 12,                         // 괴물끼리 최소 간격 (미터)
+      monsterZoneM: 12,                        // 괴물 지역 반지름 (미터)
+      monsterLifeMs: 45000,                    // 괴물이 머무는 시간 (지나면 다른 곳으로 이동)
+      monsterHeightM: 2.4,                     // 괴물 키 (미터)
+      eyeHeightM: 2.3,                         // 눈 높이 (미터)
+      dwellWarnMs: 2000,                       // 괴물 지역에 2초 이상 있으면 카운트다운 시작
+      dwellFailMs: 5000,                       // 2초 + 3초 카운트다운 후 게임오버
+      monsterModelUrl: '',                     // GLB 괴물 모델 주소. 비우면 기본 괴물을 그립니다.
+    };
+
+    const MINI_STYLE = [
+      { elementType: 'geometry', stylers: [{ color: '#f7f6ee' }] },
+      { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
+      { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#f2d4df' }] },
+      { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+      { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+    ];
+
+    const state = {
+      running: false,
+      endAt: 0,
+      score: 0,
+      hits: 0,
+      targets: [],
+      monsters: [],
+      dwellStart: null,
+      noMonsterStreak: 0,
+      monsterRooms: {},
+      downPt: null,
+      effects: [],
+      shakeUntil: 0,
+      visited: new Set(),
+      place: CONFIG.places[0],
+    };
+
+    const els = {
+      stage: document.getElementById('stage'),
+      pano: document.getElementById('pano'),
+      three: document.getElementById('three'),
+      canvas: document.getElementById('ink'),
+      mini: document.getElementById('mini'),
+      timer: document.getElementById('timer'),
+      timerBox: document.getElementById('timerBox'),
+      score: document.getElementById('score'),
+      hits: document.getElementById('hits'),
+      mstat: document.getElementById('mstat'),
+      monsterBox: document.getElementById('monsterBox'),
+      warn: document.getElementById('warn'),
+      countdown: document.getElementById('countdown'),
+      toast: document.getElementById('toast'),
+      rulesPanel: document.getElementById('rulesPanel'),
+      nextBtn: document.getElementById('nextBtn'),
+      startPanel: document.getElementById('startPanel'),
+      places: document.getElementById('places'),
+      result: document.getElementById('result'),
+      reason: document.getElementById('reason'),
+      resultScore: document.getElementById('resultScore'),
+      resultHits: document.getElementById('resultHits'),
+      againBtn: document.getElementById('againBtn'),
+    };
+    const ctx = els.canvas.getContext('2d');
+
+    let pano = null;
+    let miniMap = null;
+    let svc = null;
+    let renderer = null;
+    let scene = null;
+    let camera = null;
+    let monsterTemplate = null;
+
+    // ===== 위치와 각도 =====
+    const toRad = (d) => d * Math.PI / 180;
+    const toDeg = (r) => r * 180 / Math.PI;
+    const fovOf = (zoom) => 180 / Math.pow(2, zoom);
+    const wrapDeg = (d) => ((d % 360) + 540) % 360 - 180;
+
+    function distM(a, b) {
+      const R = 6371000;
+      const dLat = toRad(b.lat - a.lat);
+      const dLng = toRad(b.lng - a.lng);
+      const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(s));
+    }
+
+    function bearingM(a, b) {
+      const y = Math.sin(toRad(b.lng - a.lng)) * Math.cos(toRad(b.lat));
+      const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) -
+        Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lng - a.lng));
+      return (toDeg(Math.atan2(y, x)) + 360) % 360;
+    }
+
+    function offsetM(p, bearing, d) {
+      const R = 6371000;
+      const br = toRad(bearing);
+      const dr = d / R;
+      const lat1 = toRad(p.lat);
+      const lng1 = toRad(p.lng);
+      const lat2 = Math.asin(Math.sin(lat1) * Math.cos(dr) + Math.cos(lat1) * Math.sin(dr) * Math.cos(br));
+      const lng2 = lng1 + Math.atan2(Math.sin(br) * Math.sin(dr) * Math.cos(lat1), Math.cos(dr) - Math.sin(lat1) * Math.sin(lat2));
+      return { lat: toDeg(lat2), lng: toDeg(lng2) };
+    }
+
+    function currentPos() {
+      const p = pano && pano.getPosition();
+      return p ? { lat: p.lat(), lng: p.lng() } : null;
+    }
+
+    // 목표물이 지금 화면의 어디에 보이는지 계산 (안 보이면 null). 크기는 항상 같습니다.
+    function project(t, pov, w, h) {
+      const fov = fovOf(pano.getZoom());
+      const diff = wrapDeg(t.heading - pov.heading);
+      if (Math.abs(diff) > fov / 2 + 5) return null;
+      const degPerPx = fov / w;
+      const x = w / 2 + diff / degPerPx;
+      const y = h / 2 - (t.pitch - pov.pitch) / degPerPx;
+      if (y < -60 || y > h + 60) return null;
+      return { x, y, r: CONFIG.targetRadiusPx };
+    }
+
+    // 로드뷰를 지정한 장소로 옮깁니다. 이동이 끝나면 resolve됩니다.
+    function goTo(latLng) {
+      return new Promise((resolve, reject) => {
+        svc.getPanorama({ location: latLng, radius: 500, source: google.maps.StreetViewSource.OUTDOOR }, (data, status) => {
+          if (status !== 'OK') return reject(new Error('no-pano'));
+          // 이미 그 로드뷰에 있으면 위치가 바뀌지 않으므로 바로 끝냅니다.
+          if (data.location.pano === pano.getPano()) return resolve();
+          const listener = pano.addListener('position_changed', () => {
+            google.maps.event.removeListener(listener);
+            resolve();
+          });
+          pano.setPano(data.location.pano);
+          setTimeout(resolve, 5000);
+        });
+      });
+    }
+
+    // ===== 3D 괴물 (Three.js) =====
+    function initThree() {
+      renderer = new THREE.WebGLRenderer({ canvas: els.three, alpha: true, antialias: true });
+      renderer.setClearColor(0x000000, 0);
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+      camera.rotation.order = 'YXZ';
+      scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+      const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+      sun.position.set(3, 8, 5);
+      scene.add(sun);
+
+      if (CONFIG.monsterModelUrl && THREE.GLTFLoader) {
+        new THREE.GLTFLoader().load(CONFIG.monsterModelUrl, (gltf) => {
+          const box = new THREE.Box3().setFromObject(gltf.scene);
+          const size = box.max.y - box.min.y;
+          const k = CONFIG.monsterHeightM / (size || 1);
+          gltf.scene.scale.setScalar(k);
+          gltf.scene.position.y = -box.min.y * k;
+          monsterTemplate = new THREE.Group();
+          monsterTemplate.add(gltf.scene);
+        }, undefined, () => toast('괴물 모델을 불러오지 못해 기본 괴물을 씁니다'));
+      }
+    }
+
+    // 기본 괴물: 보라색 몸, 노란 눈, 분홍 뿔 (바닥이 y=0)
+    function buildMonster() {
+      if (monsterTemplate) return monsterTemplate.clone(true);
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.9, 24, 18), new THREE.MeshLambertMaterial({ color: 0x7a2fbf }));
+      body.scale.set(1, 1.25, 1);
+      body.position.y = 1.4;
+      g.add(body);
+      const eyeMat = new THREE.MeshBasicMaterial({ color: 0xf2ff00 });
+      const pupilMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+      for (const sx of [-0.35, 0.35]) {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 12), eyeMat);
+        eye.position.set(sx, 1.9, 0.72);
+        g.add(eye);
+        const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 10), pupilMat);
+        pupil.position.set(sx, 1.9, 0.92);
+        g.add(pupil);
+      }
+      const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.22, 0.1), pupilMat);
+      mouth.position.set(0, 1.0, 0.82);
+      g.add(mouth);
+      const hornMat = new THREE.MeshLambertMaterial({ color: 0xf8a9c4 });
+      for (const sx of [-0.5, 0.5]) {
+        const horn = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.7, 10), hornMat);
+        horn.position.set(sx, 2.7, 0);
+        horn.rotation.z = -sx * 0.5;
+        g.add(horn);
+      }
+      g.scale.setScalar(CONFIG.monsterHeightM / 3.05);
+      return g;
+    }
+
+    // 카메라를 로드뷰 시점과 맞추고 괴물들을 그립니다.
+    function renderThree(me) {
+      const w = els.pano.clientWidth;
+      const h = els.pano.clientHeight;
+      renderer.setSize(w, h, false);
+      const pov = pano.getPov();
+      const hfov = toRad(fovOf(pano.getZoom()));
+      camera.aspect = w / h;
+      camera.fov = toDeg(2 * Math.atan(Math.tan(hfov / 2) / camera.aspect));
+      camera.updateProjectionMatrix();
+      camera.rotation.set(toRad(pov.pitch), -toRad(pov.heading), 0);
+
+      for (const m of state.monsters) {
+        const b = toRad(m.heading);
+        m.group.position.set(m.dist * Math.sin(b), -CONFIG.eyeHeightM, -m.dist * Math.cos(b));
+        m.group.visible = true;
+      }
+      renderer.render(scene, camera);
+    }
+
+    // ===== 괴물 (방마다 3마리, 그 방 안에서만 보임) =====
+    // 괴물은 지금 방에만 있습니다. 방을 옮기면 사라지고 새 방의 괴물이 나타납니다.
+    // 한 번 괴물이 생긴 방은 게임오버 때까지 같은 자리에 같은 괴물이 나옵니다.
+    function spawnRoomMonsters(roomId) {
+      removeAllMonsters();
+      if (!state.monsterRooms[roomId]) {
+        const layout = [];
+        while (layout.length < CONFIG.monsterCount) {
+          const h = Math.random() * 360;
+          if (layout.every((m) => Math.abs(wrapDeg(m.heading - h)) > 35)) {
+            layout.push({ heading: h, dist: CONFIG.monsterMin + Math.random() * (CONFIG.monsterMax - CONFIG.monsterMin) });
+          }
+        }
+        state.monsterRooms[roomId] = layout;
+      }
+      state.monsters = state.monsterRooms[roomId].map((m) => {
+        const group = buildMonster();
+        scene.add(group);
+        return { heading: m.heading, dist: m.dist, group };
+      });
+      state.dwellStart = Date.now();
+    }
+
+    function removeAllMonsters() {
+      for (const m of state.monsters) scene.remove(m.group);
+      state.monsters = [];
+      state.dwellStart = null;
+    }
+
+    // 괴물이 있는 방에 머무는 시간을 확인합니다.
+    // 2초 이상 머물면 3초 카운트다운, 5초가 지나도 방을 옮기지 않으면 게임오버.
+    function updateMonsters(now) {
+      if (!state.monsters.length) {
+        setDanger(false);
+        els.countdown.hidden = true;
+        return;
+      }
+      if (state.dwellStart === null) state.dwellStart = now;
+      const dwell = now - state.dwellStart;
+      if (dwell >= CONFIG.dwellFailMs) {
+        endGame('monster');
+        return;
+      }
+      setDanger(true);
+      if (dwell >= CONFIG.dwellWarnMs) {
+        els.countdown.hidden = false;
+        els.countdown.textContent = Math.ceil((CONFIG.dwellFailMs - dwell) / 1000);
+      } else {
+        els.countdown.hidden = true;
+      }
+    }
+
+    function setDanger(on) {
+      els.warn.hidden = !on;
+      els.monsterBox.classList.toggle('danger', on);
+    }
+
+    // ===== 목표물 =====
+    function targetIcon() {
+      return {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 6,
+        fillColor: '#f8a9c4',
+        fillOpacity: 1,
+        strokeColor: '#111',
+        strokeWeight: 2.5,
+      };
+    }
+
+    // 목표물은 지금 방 안에 고정됩니다. 거리와 관계없이 같은 크기로 보이고, 방을 옮기면 새로 배치됩니다.
+    function spawnTarget() {
+      const list = state.place.targets;
+      const design = list[Math.floor(Math.random() * list.length)];
+      return {
+        heading: Math.random() * 360,
+        pitch: -12 + Math.random() * 24,
+        text: design.text,
+        style: design.style,
+        marker: null,
+      };
+    }
+
+    // 목표물 디자인: 장소마다 다른 메모, 카톡 말풍선, 카드
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    function drawTarget(t, x, y) {
+      const w = 170;
+      const h = 70;
+      const left = x - w / 2;
+      const top = y - h / 2;
+      ctx.save();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#111';
+      if (t.style === 'bubble') {
+        ctx.fillStyle = '#fee500';
+        roundRect(left, top, w, h, 16);
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(left + 24, top + h - 2);
+        ctx.lineTo(left + 12, top + h + 16);
+        ctx.lineTo(left + 48, top + h - 2);
+        ctx.fill();
+        ctx.stroke();
+      } else if (t.style === 'note') {
+        ctx.fillStyle = '#fff27a';
+        ctx.shadowColor = 'rgba(0,0,0,0.35)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetY = 4;
+        roundRect(left, top, w, h, 2);
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = '#ffffff';
+        roundRect(left, top, w, h, 8);
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#111';
+      ctx.font = '900 15px "Malgun Gothic", Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(t.text, x, y, w - 18);
+      ctx.restore();
+    }
+
+    function removeTarget(t) {
+      if (t.marker) t.marker.setMap(null);
+    }
+
+    // 지금 방에 목표물이 모자라면 채웁니다.
+    function updateTargets() {
+      while (state.targets.length < CONFIG.targetCount) {
+        state.targets.push(spawnTarget());
+      }
+    }
+
+    // ===== 그리기 (2D: 목표물과 효과) =====
+    function resizeCanvas() {
+      const dpr = window.devicePixelRatio || 1;
+      const w = els.pano.clientWidth;
+      const h = els.pano.clientHeight;
+      els.canvas.width = w * dpr;
+      els.canvas.height = h * dpr;
+      els.canvas.style.width = w + 'px';
+      els.canvas.style.height = h + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      els.three.width = w * dpr;
+      els.three.height = h * dpr;
+      els.three.style.width = w + 'px';
+      els.three.style.height = h + 'px';
+    }
+
+    function drawTargets(me) {
+      const w = els.canvas.clientWidth;
+      const h = els.canvas.clientHeight;
+      ctx.clearRect(0, 0, w, h);
+      if (!pano || !me) return;
+      const pov = pano.getPov();
+      ctx.globalAlpha = CONFIG.targetAlpha;
+      for (const t of state.targets) {
+        const s = project(t, pov, w, h);
+        if (!s) continue;
+        drawTarget(t, s.x, s.y);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // 명중 효과: 링이 퍼지고 파편이 튑니다.
+    function drawEffects(now) {
+      state.effects = state.effects.filter((e) => now - e.t0 < 500);
+      for (const e of state.effects) {
+        const k = (now - e.t0) / 500;
+        ctx.globalAlpha = 1 - k;
+        ctx.strokeStyle = e.color;
+        ctx.lineWidth = 6 * (1 - k) + 1;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, 10 + k * 70, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = e.color;
+        for (let i = 0; i < 8; i++) {
+          const a = (Math.PI * 2 * i) / 8;
+          const dist = 15 + k * 60;
+          ctx.fillRect(e.x + Math.cos(a) * dist - 3, e.y + Math.sin(a) * dist - 3, 6, 6);
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // 명중 후에만 화면이 잠깐 흔들립니다.
+    function applyShake(now) {
+      if (now < state.shakeUntil) {
+        const a = 8 * (state.shakeUntil - now) / 250;
+        els.stage.style.transform = `translate(${(Math.random() * 2 - 1) * a}px, ${(Math.random() * 2 - 1) * a}px)`;
+      } else if (els.stage.style.transform) {
+        els.stage.style.transform = '';
+      }
+    }
+
+    // ===== 사격 (명중한 경우에만 반응) =====
+    function shootAt(p) {
+      const me = currentPos();
+      if (!me) return;
+      const w = els.canvas.clientWidth;
+      const h = els.canvas.clientHeight;
+      const pov = pano.getPov();
+
+      let best = null;
+      let bestDist = Infinity;
+      for (const t of state.targets) {
+        const s = project(t, pov, w, h);
+        if (!s) continue;
+        const dd = Math.hypot(p.x - s.x, p.y - s.y);
+        if (dd < s.r + 6 && dd < bestDist) {
+          best = { t, s, dd };
+          bestDist = dd;
+        }
+      }
+
+      // 목표물을 맞히지 못했으면 아무 반응도 하지 않습니다 (이동 클릭과 구분).
+      if (!best) return;
+
+      const center = best.dd < best.s.r * 0.35;
+      const pts = center ? 150 : 100;
+      state.score += pts;
+      state.hits += 1;
+      state.shakeUntil = Date.now() + 250;
+      state.effects.push({ x: best.s.x, y: best.s.y, t0: Date.now(), color: center ? '#f2ff00' : '#f8a9c4' });
+      state.targets = state.targets.filter((t) => t !== best.t);
+      removeTarget(best.t);
+      state.targets.push(spawnTarget());
+      toast(center ? `정중앙! +${pts}` : `명중! +${pts}`);
+      playSound(center ? 'center' : 'hit');
+      updateHud();
+    }
+
+    // 짧게 클릭한 것만 사격입니다. 드래그는 로드뷰 둘러보기입니다.
+    function panelPoint(e) {
+      const r = els.pano.getBoundingClientRect();
+      return {
+        x: e.clientX - r.left,
+        y: e.clientY - r.top,
+        inside: e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom,
+      };
+    }
+
+    window.addEventListener('pointerdown', (e) => {
+      if (!state.running || e.button !== 0) return;
+      const p = panelPoint(e);
+      state.downPt = p.inside ? p : null;
+    });
+    window.addEventListener('pointerup', (e) => {
+      if (!state.running || !state.downPt) return;
+      const p = panelPoint(e);
+      const moved = Math.hypot(p.x - state.downPt.x, p.y - state.downPt.y);
+      state.downPt = null;
+      if (p.inside && moved < 6) shootAt(p);
+    });
+
+    // ===== 게임 흐름 =====
+    // 게임 룰 화면 (처음 화면이고, 다시 하기를 누르면 여기서 시작합니다)
+    function showRules() {
+      els.startPanel.hidden = true;
+      els.result.hidden = true;
+      els.countdown.hidden = true;
+      els.warn.hidden = true;
+      els.rulesPanel.hidden = false;
+    }
+
+    // 장소 선택 화면
+    function showStartPanel() {
+      els.rulesPanel.hidden = true;
+      els.startPanel.hidden = false;
+      els.result.hidden = true;
+      els.countdown.hidden = true;
+      els.warn.hidden = true;
+      els.places.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+    }
+
+    function hideStartPanel() {
+      els.startPanel.hidden = true;
+    }
+
+    async function startAt(index) {
+      const place = CONFIG.places[index];
+      state.place = place;
+      els.places.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+      toast('이동 중...');
+      try {
+        await goTo({ lat: place.lat, lng: place.lng });
+      } catch {
+        toast('이 장소에는 로드뷰가 없어요');
+        els.places.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+        return;
+      }
+      startGame();
+    }
+
+    function startGame() {
+      const me = currentPos();
+      if (!me) {
+        toast('로드뷰가 아직 준비되지 않았어요');
+        showStartPanel();
+        return;
+      }
+      for (const t of state.targets) removeTarget(t);
+      state.targets = [];
+      removeAllMonsters();
+      state.score = 0;
+      state.hits = 0;
+      state.running = true;
+      state.endAt = Date.now() + CONFIG.gameSeconds * 1000;
+      hideStartPanel();
+      els.result.hidden = true;
+      state.visited = new Set([pano.getPano()]);
+      updateTargets();
+      // 시작한 방에는 괴물이 없습니다. 방을 옮길 때마다 괴물 여부가 정해집니다.
+      state.noMonsterStreak = 0;
+      state.monsterRooms = {};
+      removeAllMonsters();
+      updateMonsters(Date.now());
+      updateHud();
+      toast('시작!');
+      playSound('start');
+    }
+
+    function endGame(reason) {
+      if (!state.running) return;
+      state.running = false;
+      state.downPt = null;
+      for (const t of state.targets) removeTarget(t);
+      state.targets = [];
+      removeAllMonsters();
+      setDanger(false);
+      els.countdown.hidden = true;
+      els.reason.textContent = reason === 'monster' ? '괴물에게 잡혔어요!' : '시간 종료';
+      els.resultScore.textContent = state.score;
+      els.resultHits.textContent = `명중 ${state.hits}`;
+      els.timer.textContent = '0:00';
+      els.timerBox.classList.remove('low');
+      els.mstat.textContent = '-';
+      els.result.hidden = false;
+      playSound('end');
+    }
+
+    function updateHud() {
+      els.score.textContent = state.score;
+      els.hits.textContent = `${state.hits}`;
+    }
+
+    function fmt(ms) {
+      const s = Math.max(0, Math.ceil(ms / 1000));
+      return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    }
+
+    // ===== 소리 (음원 파일 없이 브라우저에서 바로 만듭니다) =====
+    let audioCtx = null;
+
+    function beep(from, to, start, dur, type, vol) {
+      const t = audioCtx.currentTime + start;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(from, t);
+      if (to) osc.frequency.exponentialRampToValueAtTime(to, t + dur);
+      gain.gain.setValueAtTime(vol, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + dur);
+    }
+
+    function playSound(kind) {
+      try {
+        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        if (kind === 'hit') {
+          beep(900, 300, 0, 0.12, 'square', 0.15);
+        } else if (kind === 'center') {
+          beep(1200, null, 0, 0.08, 'square', 0.18);
+          beep(1800, null, 0.08, 0.12, 'square', 0.18);
+        } else if (kind === 'start') {
+          beep(660, null, 0, 0.1, 'triangle', 0.15);
+          beep(880, null, 0.12, 0.14, 'triangle', 0.15);
+        } else if (kind === 'end') {
+          beep(500, null, 0, 0.15, 'triangle', 0.15);
+          beep(350, null, 0.17, 0.3, 'triangle', 0.15);
+        }
+      } catch {
+        // 소리를 지원하지 않는 환경에서는 무시합니다.
+      }
+    }
+
+    let toastTimer = null;
+    function toast(message) {
+      els.toast.textContent = message;
+      els.toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => els.toast.classList.remove('show'), 1000);
+    }
+
+    // 매 프레임: 시간, 목표물, 괴물, 그리기
+    function loop() {
+      if (!pano || !renderer) {
+        requestAnimationFrame(loop);
+        return;
+      }
+      const now = Date.now();
+      const me = currentPos();
+      if (state.running && me) {
+        const left = state.endAt - now;
+        if (left <= 0) {
+          endGame('time');
+        } else {
+          els.timer.textContent = fmt(left);
+          els.timerBox.classList.toggle('low', left <= 30000);
+          updateMonsters(now);
+          els.mstat.textContent = state.monsters.length ? `${state.monsters.length}마리` : '-';
+        }
+      }
+      if (state.running && me) {
+        renderThree(me);
+      } else {
+        renderer.clear();
+      }
+      drawTargets(state.running ? me : null);
+      drawEffects(now);
+      applyShake(now);
+      requestAnimationFrame(loop);
+    }
+
+    // ===== Google 지도 =====
+    function initApp() {
+      pano = new google.maps.StreetViewPanorama(els.pano, {
+        position: CONFIG.places[0],
+        pov: { heading: 0, pitch: 0 },
+        addressControl: false,
+        fullscreenControl: false,
+        panControl: false,
+        showRoadLabels: false,
+        motionTracking: false,
+        enableCloseButton: false,
+        clickToGo: false,
+      });
+      svc = new google.maps.StreetViewService();
+      miniMap = new google.maps.Map(els.mini, {
+        center: CONFIG.places[0],
+        zoom: 16,
+        disableDefaultUI: true,
+        clickableIcons: false,
+        styles: MINI_STYLE,
+      });
+      new google.maps.StreetViewCoverageLayer().setMap(miniMap);
+      pano.addListener('position_changed', () => {
+        const p = pano.getPosition();
+        if (p) miniMap.panTo(p);
+      });
+      // 다른 방(로드뷰)으로 옮기면 목표물을 새로 배치합니다.
+      pano.addListener('pano_changed', () => {
+        state.targets = [];
+        if (!state.running) return;
+        // 연속으로 괴물을 못 만난 방의 수에 따라 이 방의 괴물 여부를 정합니다.
+        // 5번 이상이면 무조건 괴물, 2번 이상이면 확률로 괴물이 나옵니다.
+        const roomId = pano.getPano();
+        const streak = state.noMonsterStreak;
+        // 괴물이 한 번 생긴 방은 계속 괴물 방입니다.
+        let hasMonsters = !!state.monsterRooms[roomId];
+        if (!hasMonsters) {
+          if (streak >= 5) hasMonsters = true;
+          else if (streak >= 2) hasMonsters = Math.random() < CONFIG.monsterChance;
+        }
+        if (hasMonsters) {
+          spawnRoomMonsters(roomId);
+          state.noMonsterStreak = 0;
+        } else {
+          removeAllMonsters();
+          state.noMonsterStreak += 1;
+        }
+        // 이미 한 번 들어간 방에서는 목표물을 다시 만들지 않습니다.
+        const id = pano.getPano();
+        if (state.visited.has(id)) return;
+        state.visited.add(id);
+        updateTargets();
+      });
+      initThree();
+      resizeCanvas();
+      renderPlaceButtons();
+      toast('장소를 고르면 2분 동안 괴물 사냥을 시작해요');
+    }
+    window.initApp = initApp;
+
+    function renderPlaceButtons() {
+      els.places.innerHTML = '';
+      CONFIG.places.forEach((place, i) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn';
+        btn.innerHTML = `<span>${place.name}</span>`;
+        btn.addEventListener('click', () => startAt(i));
+        els.places.appendChild(btn);
+      });
+    }
+
+    function loadGoogleMaps() {
+      if (!CONFIG.apiKey || CONFIG.apiKey === 'YOUR_API_KEY') {
+        els.pano.innerHTML = '<div class="fallback">CONFIG.apiKey에 Google Maps API 키를 입력하세요</div>';
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://maps.googleapis.com/maps/api/js?' + new URLSearchParams({
+        key: CONFIG.apiKey,
+        language: 'ko',
+        callback: 'initApp',
+      });
+      script.async = true;
+      script.onerror = () => toast('Google 지도를 불러오지 못했습니다. API 키를 확인하세요.');
+      document.head.appendChild(script);
+    }
+
+    els.nextBtn.addEventListener('click', showStartPanel);
+    els.againBtn.addEventListener('click', showRules);
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+    loadGoogleMaps();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
